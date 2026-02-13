@@ -1,8 +1,8 @@
-# LifeBalance AI - MVP Feature Prioritization
+# Mendly - MVP Feature Prioritization
 
 **Date**: 2025-02-13  
 **Author**: [Your Name]  
-**Project**: LifeBalance AI  
+**Project**: Mendly  
 **Target**: 12-week MVP launch
 
 ---

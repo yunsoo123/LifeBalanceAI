@@ -1,4 +1,4 @@
-# LifeBalance AI - Coding Conventions
+# Mendly - Coding Conventions
 
 **Last Updated**: 2025-02-13  
 **Enforcement**: Via .cursorrules, ESLint, TypeScript, code reviews

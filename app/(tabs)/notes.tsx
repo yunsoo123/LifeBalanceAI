@@ -1,0 +1,62 @@
+import React from 'react';
+import { View, Text, ScrollView } from 'react-native';
+import { Card, Badge, Button } from '@/components/ui';
+
+export default function NotesScreen() {
+  const mockNotes = [
+    {
+      title: 'App Dev Progress - Day 3',
+      preview: 'Implemented user authentication with Supabase...',
+      tags: ['app-dev', 'coding'],
+      linkedEvent: 'App Dev Session',
+    },
+    {
+      title: 'Poker Strategy Notes',
+      preview: 'Need to work on 3-bet ranges from button position...',
+      tags: ['poker', 'strategy'],
+      linkedEvent: 'Poker Grinding',
+    },
+  ];
+
+  return (
+    <ScrollView className="flex-1 bg-white dark:bg-gray-950">
+      <View className="p-4">
+        <View className="flex-row items-center justify-between mb-6">
+          <Text className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+            Notes
+          </Text>
+          <Button variant="primary" size="sm">
+            + New
+          </Button>
+        </View>
+
+        <View className="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 mb-6">
+          <Text className="text-gray-400">🔍 Search notes...</Text>
+        </View>
+
+        {mockNotes.map((note, i) => (
+          <Card key={i} variant="default" padding="md" className="mb-3">
+            <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              {note.title}
+            </Text>
+            <Text className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              {note.preview}
+            </Text>
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row gap-2">
+                {note.tags.map((tag) => (
+                  <Badge key={tag} variant="default" size="sm">
+                    {tag}
+                  </Badge>
+                ))}
+              </View>
+              <Text className="text-xs text-gray-500 dark:text-gray-400">
+                📅 {note.linkedEvent}
+              </Text>
+            </View>
+          </Card>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}

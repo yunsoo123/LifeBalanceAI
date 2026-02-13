@@ -1,4 +1,4 @@
-# LifeBalance AI - Data Model
+# Mendly - Data Model
 
 **Date**: 2025-02-13  
 **Author**: [Your Name]  

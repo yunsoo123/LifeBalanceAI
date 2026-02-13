@@ -1,4 +1,4 @@
--- LifeBalance AI - Initial Schema
+-- Mendly - Initial Schema
 -- Date: 2025-02-13
 -- Creates: profiles, goals, schedules, events, notes, weekly_reviews
 -- Note: users table is managed by Supabase Auth (auth.users)

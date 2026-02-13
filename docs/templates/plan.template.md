@@ -2,7 +2,7 @@
 
 **Date**: {date}
 **Author**: {author}
-**Project**: LifeBalance AI
+**Project**: Mendly
 
 ---
 

@@ -1,8 +1,8 @@
-# LifeBalance AI - Data Schema
+# Mendly - Data Schema
 
 **Date**: 2025-02-13  
 **Author**: [Your Name]  
-**Project**: LifeBalance AI
+**Project**: Mendly
 
 ---
 

@@ -1,0 +1,79 @@
+import React from 'react';
+import { View, Text, ScrollView } from 'react-native';
+import { Button } from '@/components/ui';
+
+export default function CalendarScreen() {
+  const mockEvents = [
+    { time: '09:00', title: 'School', color: 'bg-info', duration: '3h' },
+    { time: '14:00', title: 'App Dev', color: 'bg-brand-primary', duration: '2h' },
+    { time: '18:00', title: 'Poker Grinding', color: 'bg-warning', duration: '2h' },
+  ];
+
+  return (
+    <ScrollView className="flex-1 bg-white dark:bg-gray-950">
+      <View className="p-4">
+        <View className="flex-row items-center justify-between mb-4">
+          <View>
+            <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              This Week
+            </Text>
+            <Text className="text-sm text-gray-600 dark:text-gray-400">
+              Feb 12 - Feb 18, 2025
+            </Text>
+          </View>
+          <Button variant="ghost" size="sm">
+            Today
+          </Button>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6">
+          <View className="flex-row gap-2">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
+              <View
+                key={day}
+                className={`px-4 py-3 rounded-lg ${
+                  i === 2 ? 'bg-brand-primary' : 'bg-gray-100 dark:bg-gray-900'
+                }`}
+              >
+                <Text
+                  className={`text-xs font-medium ${
+                    i === 2 ? 'text-white' : 'text-gray-600 dark:text-gray-400'
+                  }`}
+                >
+                  {day}
+                </Text>
+                <Text
+                  className={`text-lg font-bold ${
+                    i === 2 ? 'text-white' : 'text-gray-900 dark:text-gray-100'
+                  }`}
+                >
+                  {12 + i}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+
+        <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+          Wednesday, Feb 14
+        </Text>
+
+        {mockEvents.map((event, i) => (
+          <View key={i} className="flex-row mb-3">
+            <Text className="text-sm text-gray-500 dark:text-gray-400 w-16">
+              {event.time}
+            </Text>
+            <View className={`flex-1 ${event.color} rounded-lg p-3`}>
+              <Text className="text-white font-semibold">{event.title}</Text>
+              <Text className="text-white/80 text-sm">{event.duration}</Text>
+            </View>
+          </View>
+        ))}
+
+        <Button variant="primary" size="lg" fullWidth className="mt-6">
+          + Add Event
+        </Button>
+      </View>
+    </ScrollView>
+  );
+}
