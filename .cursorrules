@@ -1,0 +1,346 @@
+# LifeBalance AI - Cursor Rules
+
+## Project Overview
+LifeBalance AI is a mobile-first AI-powered life management app built with React Native + Expo, Supabase backend, and OpenAI integration. Target users: ADHD-type individuals with multiple goals and limited planning time.
+
+---
+
+## 🎯 Core Principles
+
+### 1. Design-First Development
+- NEVER implement features without a design doc in `docs/02-design/features/{feature}.design.md`
+- Design docs MUST include: API contracts, data models, component tree, error handling, security considerations
+- Implementation MUST match design; deviations require design doc updates
+
+### 2. Type Safety & Validation
+- Strict TypeScript: NO `any`, `@ts-ignore`, or loose types
+- Zod schemas for ALL API inputs/outputs, form data, and AI responses
+- Runtime validation at system boundaries (API routes, form submissions, AI responses)
+- Supabase types generated from schema: `npx supabase gen types typescript`
+
+### 3. AI Integration Standards
+- ALL AI calls wrapped in try-catch with fallback behavior
+- Structured outputs via JSON mode or Zod schema validation
+- Cost tracking: log token usage and provider for every AI call
+- Rate limiting on AI endpoints (10 req/min free, 50 req/min pro)
+- Never expose raw AI errors to users; translate to human-friendly messages
+
+### 4. Mobile-First UX
+- Touch targets ≥44×44dp (iOS), ≥48×48dp (Android)
+- Gesture-friendly: swipe-to-delete, pull-to-refresh, pan gestures
+- Offline-first: queue actions when offline, sync when online
+- Loading states on ALL async actions (skeleton screens, spinners, progress bars)
+- Error states with retry actions
+- Empty states with clear CTAs
+
+---
+
+## 📁 Project Structure
+
+```
+/
+├── app/                    # Expo Router pages
+│   ├── (auth)/             # Auth-protected routes
+│   ├── (tabs)/             # Tab navigation (Inbox, Calendar, Notes, Profile)
+│   ├── _layout.tsx         # Root layout (providers, fonts, Supabase)
+│   └── index.tsx           # Landing/onboarding
+├── components/
+│   ├── ui/                 # shadcn/ui-style primitives (Button, Card, Input)
+│   ├── features/           # Feature-specific components (CalendarGrid, AIChat)
+│   └── shared/             # Shared components (Header, EmptyState, ErrorBoundary)
+├── lib/
+│   ├── supabase/           # Supabase client, auth, hooks
+│   ├── ai/                 # OpenAI wrappers (schedule generator, note parser)
+│   ├── design-system.ts    # Design tokens (colors, typography, spacing)
+│   └── utils.ts            # Shared utilities
+├── types/
+│   ├── database.types.ts   # Generated Supabase types
+│   └── index.ts            # App-specific types (Schedule, Note, Goal)
+├── docs/
+│   ├── 01-plan/            # PDCA plans
+│   ├── 02-design/          # PDCA designs
+│   ├── 03-analysis/        # PDCA gap analyses
+│   └── 04-report/          # PDCA completion reports
+└── .cursorrules            # This file
+```
+
+---
+
+## 🎨 Design System
+
+### Colors (Light & Dark Mode)
+```typescript
+// lib/design-system.ts
+export const colors = {
+  brand: {
+    primary: '#6366F1',    // Indigo-500
+    secondary: '#EC4899',  // Pink-500
+  },
+  text: {
+    primary: 'text-gray-900 dark:text-gray-100',
+    secondary: 'text-gray-600 dark:text-gray-400',
+    tertiary: 'text-gray-500 dark:text-gray-500',
+  },
+  background: {
+    primary: 'bg-white dark:bg-gray-950',
+    secondary: 'bg-gray-50 dark:bg-gray-900',
+    tertiary: 'bg-gray-100 dark:bg-gray-800',
+  },
+  border: 'border-gray-200 dark:border-gray-800',
+}
+```
+
+### Typography
+- Headings: Inter (English), Pretendard (Korean)
+- Body: Same stack
+- Code: JetBrains Mono
+- Scales: text-xs (12px), text-sm (14px), text-base (16px), text-lg (18px), text-xl (20px), text-2xl (24px)
+
+### Spacing
+- Base unit: 4px (Tailwind's 1)
+- Consistent: Use space-y-4, gap-6, p-4, etc.
+- Screen padding: px-4 (mobile), px-6 (tablet)
+
+### Components
+- Primitives from React Native Paper or custom with Tailwind-inspired styling
+- Reference: shadcn/ui patterns (Button variants, Card composition, Input states)
+
+---
+
+## 🔒 Security & Data
+
+### Environment Variables
+```
+# Supabase
+EXPO_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...  # Server-only
+
+# OpenAI
+OPENAI_API_KEY=sk-...              # Server-only
+
+# Stripe
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...      # Server-only
+```
+
+### Auth Rules
+- Supabase RLS enabled on ALL tables
+- Row-level policies: users see only their own data
+- No direct database access from client; use Supabase client with RLS
+
+### AI Data Handling
+- User input sanitized before sending to OpenAI
+- AI responses validated with Zod before storage
+- No PII sent to AI unless user explicitly consents
+- Anonymize data in logs and analytics
+
+---
+
+## 🧪 Quality Gates (MUST PASS before committing)
+
+### 1. Type Check
+```
+npx tsc --noEmit
+```
+❌ FAIL: Any TypeScript errors | ✅ PASS: Zero errors
+
+### 2. Lint
+```
+npm run lint
+```
+❌ FAIL: Errors (warnings OK if documented) | ✅ PASS: Zero errors
+
+### 3. Build
+```
+npx expo prebuild --clean
+```
+❌ FAIL: Build errors | ✅ PASS: Successful build for iOS & Android
+
+### 4. Manual Test Checklist (per feature)
+- [ ] Works on iOS simulator (iPhone 14)
+- [ ] Works on Android emulator (Pixel 5)
+- [ ] Dark mode renders correctly
+- [ ] Loading states appear and resolve
+- [ ] Error states show and allow retry
+- [ ] Empty states display with CTAs
+- [ ] Offline mode queues actions (if applicable)
+- [ ] AI responses validated and handle failures gracefully
+- [ ] No console warnings or errors in Metro bundler
+
+---
+
+## 🚫 Anti-Patterns (NEVER DO)
+
+### Code Quality
+- ❌ Using `any` type (use `unknown` and narrow, or define proper types)
+- ❌ Ignoring TypeScript errors with `@ts-ignore` (fix the root cause)
+- ❌ Hardcoding strings/numbers (extract to constants or design system)
+- ❌ Copy-pasting code (extract to shared function/component)
+- ❌ Nested ternaries >2 levels (extract to function or early returns)
+- ❌ Large files >500 lines (split into smaller modules)
+
+### React/React Native
+- ❌ Inline styles (use Tailwind classes or design system)
+- ❌ Missing keys in `.map()` (use stable IDs, not index)
+- ❌ Side effects without cleanup (unsubscribe, cancel, clear timers)
+- ❌ Missing error boundaries (wrap risky components)
+- ❌ Prop drilling >3 levels (use context or state management)
+
+### AI Integration
+- ❌ Unvalidated AI responses (always use Zod or manual checks)
+- ❌ Exposing raw AI errors to users (translate to friendly messages)
+- ❌ Missing fallbacks (what if API is down? Use cached data or graceful degradation)
+- ❌ Unbounded AI calls (rate limit per user)
+- ❌ No token usage tracking (log every call for cost control)
+
+### UX
+- ❌ No loading states (user sees blank screen)
+- ❌ No error feedback (user doesn't know what went wrong)
+- ❌ No empty states (user sees confusing blank list)
+- ❌ Tiny touch targets (frustrating on mobile)
+- ❌ Blocking the UI (use background tasks for long operations)
+
+---
+
+## 📝 Naming Conventions
+
+### Files & Folders
+- Components: `PascalCase.tsx` (e.g., CalendarGrid.tsx)
+- Utilities: `kebab-case.ts` (e.g., format-date.ts)
+- Hooks: `use-camel-case.ts` (e.g., use-schedule.ts)
+- Types: `kebab-case.types.ts` (e.g., schedule.types.ts)
+- Feature folders: `kebab-case/` (e.g., ai-chat/, weekly-review/)
+
+### Code
+- Components: PascalCase (e.g., CalendarGrid, AIChat)
+- Functions: camelCase (e.g., generateSchedule, parseNote)
+- Constants: UPPER_SNAKE_CASE (e.g., MAX_GOALS, AI_MODEL)
+- Enums: PascalCase (e.g., SubscriptionTier, EventType)
+- Interfaces/Types: PascalCase with I prefix optional (e.g., Schedule, IUser)
+
+### Database (Supabase)
+- Tables: snake_case, plural (e.g., users, schedules, notes)
+- Columns: snake_case (e.g., user_id, created_at, goal_text)
+- Indexes: idx_{table}_{columns} (e.g., idx_schedules_user_id)
+- Functions: snake_case (e.g., get_user_schedules)
+
+---
+
+## 🔄 PDCA Integration
+
+### When to Use Each Agent
+- **pipeline-guide** → "What do I do first?", "Development order?"
+- **pdca plan** → Start a new feature (creates docs/01-plan/features/{feature}.plan.md)
+- **pdca design** → After plan, before coding (creates docs/02-design/features/{feature}.design.md)
+- **pdca do** → Implement the feature per design
+- **gap-detector** → Compare design vs implementation (creates docs/03-analysis/{feature}.analysis.md)
+- **pdca-iterator** → Auto-fix gaps until match rate ≥90%
+- **code-analyzer** → Code quality review (conventions, security, design match)
+- **report-generator** → Completion report (creates docs/04-report/{feature}.report.md)
+
+### Phase Handoff Rules
+- **Plan → Design**: Plan MUST exist and define scope, user stories, success criteria
+- **Design → Do**: Design MUST exist with API contracts, data models, components, error handling
+- **Do → Check**: Implementation MUST be complete per design (all APIs, components, tests)
+- **Check → Act**: Analysis MUST show match rate (target ≥90%) and list gaps
+- **Act → Report**: Gaps fixed or documented as out-of-scope; ready for next cycle
+
+---
+
+## 🎯 Success Metrics (per Feature)
+
+### Code Quality
+- ✅ TypeScript strict mode, zero any
+- ✅ ESLint pass (zero errors)
+- ✅ Build success (iOS + Android)
+- ✅ Match rate ≥90% (design vs implementation)
+
+### UX Quality
+- ✅ Loading states on all async actions
+- ✅ Error states with retry
+- ✅ Empty states with CTAs
+- ✅ Touch targets ≥44×44dp
+- ✅ Dark mode renders correctly
+
+### AI Quality
+- ✅ AI responses validated (Zod or manual)
+- ✅ Fallback behavior on AI failure
+- ✅ Rate limiting enforced
+- ✅ Token usage logged
+
+### Performance
+- ✅ Screen transitions <300ms
+- ✅ AI responses <5s (or show progress)
+- ✅ Offline mode works (queue actions)
+
+---
+
+## 🚀 Deployment Checklist
+
+### Pre-Deploy
+- [ ] All PDCA phases complete (Plan → Design → Do → Check → Act → Report)
+- [ ] Type check pass (npx tsc --noEmit)
+- [ ] Lint pass (npm run lint)
+- [ ] Build pass (npx expo prebuild --clean)
+- [ ] Manual test on iOS + Android
+- [ ] Dark mode tested
+- [ ] Environment variables set in Vercel/Expo
+- [ ] Supabase migrations applied (npx supabase db push)
+- [ ] Rate limits configured
+- [ ] Sentry/error tracking enabled
+
+### Deploy
+- [ ] Push to main branch
+- [ ] Vercel auto-deploy (web) or EAS build (mobile)
+- [ ] Smoke test production: auth, AI call, data sync
+- [ ] Monitor logs for errors
+
+### Post-Deploy
+- [ ] Update docs/04-report/{feature}.report.md with deploy date
+- [ ] Announce in Product Hunt / Reddit (if public launch)
+- [ ] Monitor Sentry for errors
+- [ ] Track KPIs: DAU, AI call success rate, error rate
+
+---
+
+## 📚 Quick Reference
+
+### Common Commands
+```
+# Dev
+npm run start                   # Start Expo dev server
+npm run ios                     # iOS simulator
+npm run android                 # Android emulator
+
+# Quality
+npx tsc --noEmit                # Type check
+npm run lint                    # Lint
+npx expo prebuild --clean       # Clean build
+
+# Supabase
+npx supabase gen types typescript --project-id xxx > types/database.types.ts
+npx supabase db push            # Apply migrations
+
+# AI
+# (No CLI; use lib/ai/ functions)
+```
+
+### Key Files
+- Design tokens: `lib/design-system.ts`
+- Supabase client: `lib/supabase/client.ts`
+- AI wrappers: `lib/ai/schedule-generator.ts`, `lib/ai/note-parser.ts`
+- Types: `types/database.types.ts`, `types/index.ts`
+
+---
+
+## 🆘 When Stuck
+- **Design missing?** → Run `pdca design {feature}` or ask pipeline-guide
+- **Code quality issues?** → Run code-analyzer
+- **Implementation doesn't match design?** → Run gap-detector, then pdca-iterator
+- **What's next?** → Run pdca status or pdca next
+- **Need overall structure?** → Ask pipeline-guide "What are the 9 phases?"
+
+---
+
+Remember: Quality first. If something feels rushed or hacky, stop and refactor. Users can tell when a product cares about design and polish—that's our competitive edge.
