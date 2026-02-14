@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, EmptyState, Badge } from '@/components/ui';
 import { supabase, tables } from '@/lib/supabase/client';
+import { getApiBase } from '@/lib/apiUrl';
 
 interface Note {
   id: string;
@@ -78,6 +79,12 @@ export default function NotesScreen() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [availableEvents, setAvailableEvents] = useState<LinkedEvent[]>([]);
   const [showEventLinkModal, setShowEventLinkModal] = useState<boolean>(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{
+    summary?: string;
+    actionItems?: string[];
+    improvements?: string[];
+  } | null>(null);
+  const [generatingAI, setGeneratingAI] = useState<boolean>(false);
 
   function filterNotes(): Note[] {
     if (!searchQuery.trim()) return notes;
@@ -286,6 +293,43 @@ export default function NotesScreen() {
     return availableEvents.filter((e) => selectedNote.linked_event_ids.includes(e.id));
   }
 
+  async function generateAISuggestions() {
+    if (!selectedNote || !selectedNote.content.trim()) {
+      Alert.alert('Empty note', 'Add some content to the note first.');
+      return;
+    }
+
+    setGeneratingAI(true);
+    setAiSuggestions(null);
+
+    try {
+      const base = getApiBase();
+      const response = await fetch(`${base}/api/note/enhance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: selectedNote.title,
+          content: selectedNote.content,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as { suggestions?: typeof aiSuggestions };
+      setAiSuggestions(data.suggestions ?? null);
+    } catch (error) {
+      console.error('AI enhancement error:', error);
+      Alert.alert(
+        'AI suggestions failed',
+        'Failed to generate AI suggestions.\n\nCheck:\n1. OpenAI API key\n2. API server running\n3. /api/note/enhance endpoint'
+      );
+    } finally {
+      setGeneratingAI(false);
+    }
+  }
+
   async function performDeleteNote(noteId: string) {
     setLoading(true);
     try {
@@ -355,6 +399,7 @@ export default function NotesScreen() {
                         setEditContent(note.content);
                         setEditTags(note.tags.join(', '));
                         setIsEditing(false);
+                        setAiSuggestions(null);
                       }}
                       className={`p-4 rounded-lg mb-1 ${
                         selectedNote?.id === note.id
@@ -607,7 +652,73 @@ export default function NotesScreen() {
                         </View>
                       )}
 
-                      <Text className="text-base text-gray-900 dark:text-gray-100 leading-relaxed">
+                      <View className="mt-4">
+                        <View className="flex-row justify-between items-center mb-2">
+                          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            AI Suggestions
+                          </Text>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onPress={generateAISuggestions}
+                            disabled={generatingAI || loading}
+                          >
+                            {generatingAI ? '🤖 Generating...' : '✨ Enhance'}
+                          </Button>
+                        </View>
+
+                        {aiSuggestions && (
+                          <View className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                            {aiSuggestions.summary && (
+                              <View className="mb-4">
+                                <Text className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">
+                                  📝 SUMMARY
+                                </Text>
+                                <Text className="text-sm text-gray-900 dark:text-gray-100">
+                                  {aiSuggestions.summary}
+                                </Text>
+                              </View>
+                            )}
+
+                            {aiSuggestions.actionItems && aiSuggestions.actionItems.length > 0 && (
+                              <View className="mb-4">
+                                <Text className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">
+                                  ✓ ACTION ITEMS
+                                </Text>
+                                {aiSuggestions.actionItems.map((item, idx) => (
+                                  <View key={idx} className="flex-row items-start gap-2 mb-1">
+                                    <Text className="text-purple-600 dark:text-purple-400">•</Text>
+                                    <Text className="flex-1 text-sm text-gray-900 dark:text-gray-100">
+                                      {item}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+
+                            {aiSuggestions.improvements &&
+                              aiSuggestions.improvements.length > 0 && (
+                                <View>
+                                  <Text className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">
+                                    💡 SUGGESTIONS
+                                  </Text>
+                                  {aiSuggestions.improvements.map((item, idx) => (
+                                    <View key={idx} className="flex-row items-start gap-2 mb-1">
+                                      <Text className="text-purple-600 dark:text-purple-400">
+                                        →
+                                      </Text>
+                                      <Text className="flex-1 text-sm text-gray-900 dark:text-gray-100">
+                                        {item}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                          </View>
+                        )}
+                      </View>
+
+                      <Text className="text-base text-gray-900 dark:text-gray-100 leading-relaxed mt-4">
                         {selectedNote.content || '(Empty note)'}
                       </Text>
                     </View>
