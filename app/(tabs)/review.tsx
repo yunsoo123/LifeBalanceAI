@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, CardHeader, CardBody, Badge } from '@/components/ui';
 import { supabase, tables } from '@/lib/supabase/client';
+import { getApiBase } from '@/lib/apiUrl';
 
 interface WeeklyStats {
   week_start: string;
@@ -48,6 +49,7 @@ export default function ReviewScreen() {
   const [stats, setStats] = useState<WeeklyStats | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
+  const [generatingInsights, setGeneratingInsights] = useState<boolean>(false);
 
   const loadWeeklyStats = useCallback(async () => {
     setLoading(true);
@@ -151,6 +153,51 @@ export default function ReviewScreen() {
     setCurrentWeek(new Date());
   }
 
+  async function generateAIInsights() {
+    if (!stats) {
+      Alert.alert('No data', 'No statistics available for this week.');
+      return;
+    }
+
+    setGeneratingInsights(true);
+    setAiInsights([]);
+
+    try {
+      const base = getApiBase();
+      const response = await fetch(`${base}/api/review/insights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stats: {
+            planned_hours: stats.planned_hours,
+            actual_hours: stats.actual_hours,
+            completed_events: stats.completed_events,
+            total_events: stats.total_events,
+            notes_created: stats.notes_created,
+            achievement_rate: stats.achievement_rate,
+            week_start: stats.week_start,
+            week_end: stats.week_end,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as { insights?: string[] };
+      setAiInsights(data.insights ?? []);
+    } catch (error) {
+      console.error('AI insights error:', error);
+      Alert.alert(
+        'AI insights failed',
+        'Failed to generate AI insights.\n\nCheck:\n1. OpenAI API key\n2. API server running\n3. /api/review/insights endpoint'
+      );
+    } finally {
+      setGeneratingInsights(false);
+    }
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-white dark:bg-gray-950" edges={['top', 'bottom']}>
       <View className="px-6 pt-4 pb-2 border-b border-gray-200 dark:border-gray-800">
@@ -159,13 +206,10 @@ export default function ReviewScreen() {
           <Button
             variant="secondary"
             size="sm"
-            onPress={() => {
-              setAiInsights([]);
-              Alert.alert('AI Insights', 'AI Insights - Phase 4.5.2');
-            }}
-            disabled={loading}
+            onPress={generateAIInsights}
+            disabled={loading || generatingInsights || !stats}
           >
-            ✨ Generate
+            {generatingInsights ? '🤖 Generating...' : '✨ Generate Insights'}
           </Button>
         </View>
 
@@ -295,21 +339,60 @@ export default function ReviewScreen() {
 
               <Card variant="default" padding="md">
                 <CardHeader>
-                  <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    AI Insights
-                  </Text>
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                      AI Insights
+                    </Text>
+                    {aiInsights.length > 0 && (
+                      <Badge variant="success" size="sm">
+                        {aiInsights.length} insights
+                      </Badge>
+                    )}
+                  </View>
                 </CardHeader>
                 <CardBody>
-                  {aiInsights.length > 0 ? (
-                    aiInsights.map((line, idx) => (
-                      <Text key={idx} className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-                        • {line}
+                  {generatingInsights ? (
+                    <View className="py-4">
+                      <Text className="text-sm text-gray-500 dark:text-gray-400 text-center mb-2">
+                        🤖 Analyzing your week...
                       </Text>
-                    ))
-                  ) : (
+                      <Text className="text-xs text-gray-400 dark:text-gray-500 text-center">
+                        This may take a few seconds
+                      </Text>
+                    </View>
+                  ) : aiInsights.length === 0 ? (
                     <Text className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                      Generate AI insights to get personalized recommendations
+                      Generate AI insights to get personalized recommendations based on your weekly
+                      performance
                     </Text>
+                  ) : (
+                    <View className="gap-2">
+                      {aiInsights.map((insight, idx) => (
+                        <View
+                          key={idx}
+                          className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4"
+                        >
+                          <View className="flex-row items-start gap-2">
+                            <Text className="text-lg">
+                              {idx === 0
+                                ? '🎯'
+                                : idx === 1
+                                  ? '💡'
+                                  : idx === 2
+                                    ? '🌟'
+                                    : idx === 3
+                                      ? '📈'
+                                      : idx === 4
+                                        ? '🚀'
+                                        : '✨'}
+                            </Text>
+                            <Text className="flex-1 text-sm text-gray-900 dark:text-gray-100">
+                              {insight}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
                   )}
                 </CardBody>
               </Card>
