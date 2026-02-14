@@ -22,6 +22,13 @@ interface Note {
   updated_at: string;
 }
 
+interface LinkedEvent {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+}
+
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -69,6 +76,8 @@ export default function NotesScreen() {
   const [editTags, setEditTags] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [availableEvents, setAvailableEvents] = useState<LinkedEvent[]>([]);
+  const [showEventLinkModal, setShowEventLinkModal] = useState<boolean>(false);
 
   function filterNotes(): Note[] {
     if (!searchQuery.trim()) return notes;
@@ -85,6 +94,37 @@ export default function NotesScreen() {
   useEffect(() => {
     loadNotes();
   }, []);
+
+  useEffect(() => {
+    loadAvailableEvents();
+  }, []);
+
+  async function loadAvailableEvents() {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const today = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(today.getDate() + 30);
+
+      const { data, error } = await tables
+        .events()
+        .select('id, title, start_time, end_time')
+        .eq('user_id', user.id)
+        .gte('start_time', today.toISOString())
+        .lte('start_time', futureDate.toISOString())
+        .order('start_time');
+
+      if (error) throw error;
+
+      setAvailableEvents(data ?? []);
+    } catch (error) {
+      console.error('Load events error:', error);
+    }
+  }
 
   async function loadNotes() {
     setLoading(true);
@@ -211,6 +251,41 @@ export default function NotesScreen() {
     ]);
   }
 
+  async function toggleEventLink(eventId: string) {
+    if (!selectedNote) return;
+
+    setLoading(true);
+    try {
+      const currentLinks = selectedNote.linked_event_ids ?? [];
+      const newLinks = currentLinks.includes(eventId)
+        ? currentLinks.filter((id) => id !== eventId)
+        : [...currentLinks, eventId];
+
+      const { error } = await tables
+        .notes()
+        .update({
+          event_id: newLinks[0] ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedNote.id);
+
+      if (error) throw error;
+
+      setSelectedNote({ ...selectedNote, linked_event_ids: newLinks });
+      await loadNotes();
+    } catch (error) {
+      console.error('Toggle event link error:', error);
+      Alert.alert('Error', 'Failed to link event');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getLinkedEvents(): LinkedEvent[] {
+    if (!selectedNote) return [];
+    return availableEvents.filter((e) => selectedNote.linked_event_ids.includes(e.id));
+  }
+
   async function performDeleteNote(noteId: string) {
     setLoading(true);
     try {
@@ -305,6 +380,11 @@ export default function NotesScreen() {
                             {tag}
                           </Badge>
                         ))}
+                        {note.linked_event_ids.length > 0 && (
+                          <Badge variant="info" size="sm">
+                            📅 {note.linked_event_ids.length}
+                          </Badge>
+                        )}
                         <Text className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
                           {formatDate(note.updated_at)}
                         </Text>
@@ -415,6 +495,69 @@ export default function NotesScreen() {
                           onChangeText={setEditTags}
                         />
                       </View>
+
+                      <View className="mt-4">
+                        <View className="flex-row justify-between items-center mb-1">
+                          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Linked Events ({selectedNote.linked_event_ids.length})
+                          </Text>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onPress={() => setShowEventLinkModal(true)}
+                          >
+                            + Link Event
+                          </Button>
+                        </View>
+
+                        {showEventLinkModal && (
+                          <View className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 mt-2">
+                            <View className="flex-row justify-between items-center mb-2">
+                              <Text className="font-medium text-gray-900 dark:text-gray-100">
+                                Select Events
+                              </Text>
+                              <Pressable onPress={() => setShowEventLinkModal(false)}>
+                                <Text className="text-brand-primary">Done</Text>
+                              </Pressable>
+                            </View>
+
+                            <ScrollView className="max-h-[200px]">
+                              {availableEvents.length === 0 ? (
+                                <Text className="text-sm text-gray-500 dark:text-gray-400">
+                                  No upcoming events
+                                </Text>
+                              ) : (
+                                availableEvents.map((event) => {
+                                  const isLinked = selectedNote.linked_event_ids.includes(event.id);
+                                  return (
+                                    <Pressable
+                                      key={event.id}
+                                      onPress={() => toggleEventLink(event.id)}
+                                      className={`p-2 rounded-lg mb-1 ${
+                                        isLinked
+                                          ? 'bg-brand-primary/10'
+                                          : 'bg-white dark:bg-gray-800'
+                                      }`}
+                                    >
+                                      <View className="flex-row items-center gap-2">
+                                        <Text className="text-lg">{isLinked ? '☑' : '☐'}</Text>
+                                        <View className="flex-1">
+                                          <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                            {event.title}
+                                          </Text>
+                                          <Text className="text-xs text-gray-500 dark:text-gray-400">
+                                            {new Date(event.start_time).toLocaleString()}
+                                          </Text>
+                                        </View>
+                                      </View>
+                                    </Pressable>
+                                  );
+                                })
+                              )}
+                            </ScrollView>
+                          </View>
+                        )}
+                      </View>
                     </View>
                   ) : (
                     <View>
@@ -429,6 +572,40 @@ export default function NotesScreen() {
                           </Badge>
                         ))}
                       </View>
+
+                      {selectedNote.linked_event_ids.length > 0 && (
+                        <View className="mb-4">
+                          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Linked Events
+                          </Text>
+                          <View className="flex-row flex-wrap gap-2">
+                            {getLinkedEvents().map((event) => (
+                              <Pressable
+                                key={event.id}
+                                className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2"
+                                onPress={() =>
+                                  Alert.alert(
+                                    'Navigate to event',
+                                    `${event.title}\n(Full navigation in Phase 5)`
+                                  )
+                                }
+                              >
+                                <View className="flex-row items-center gap-2">
+                                  <Text className="text-sm text-blue-700 dark:text-blue-300">
+                                    📅 {event.title}
+                                  </Text>
+                                  <Pressable onPress={() => toggleEventLink(event.id)} hitSlop={8}>
+                                    <Text className="text-xs text-blue-500">✕</Text>
+                                  </Pressable>
+                                </View>
+                                <Text className="text-xs text-blue-600 dark:text-blue-400">
+                                  {new Date(event.start_time).toLocaleString()}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        </View>
+                      )}
 
                       <Text className="text-base text-gray-900 dark:text-gray-100 leading-relaxed">
                         {selectedNote.content || '(Empty note)'}
