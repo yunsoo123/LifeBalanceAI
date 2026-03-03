@@ -5,5 +5,7 @@ module.exports = {
     'prettier/prettier': 'error',
     'no-console': ['warn', { allow: ['warn', 'error'] }],
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    'import/namespace': 'off',
+    'import/no-unresolved': 'off',
   },
 };

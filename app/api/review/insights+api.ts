@@ -1,4 +1,9 @@
 import OpenAI from 'openai';
+import { z } from 'zod';
+
+const InsightsResponseSchema = z.object({
+  insights: z.array(z.string()).default([]),
+});
 
 function getOpenAI(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -19,8 +24,9 @@ export async function POST(request: Request) {
         week_start?: string;
         week_end?: string;
       };
+      locale?: 'ko' | 'en';
     };
-    const { stats } = body;
+    const { stats, locale = 'ko' } = body;
 
     if (!stats) {
       return Response.json({ error: 'Statistics data is required' }, { status: 400 });
@@ -32,7 +38,14 @@ export async function POST(request: Request) {
     const totalEvents = stats.total_events ?? 0;
     const hoursRatio = planned > 0 ? actual / planned : 0;
 
+    const langInstruction =
+      locale === 'ko'
+        ? 'You MUST respond in Korean only. Every item in the "insights" array must be written in Korean.'
+        : 'Respond in English.';
+
     const prompt = `You are a productivity coach analyzing a user's weekly performance. Provide 4-6 personalized insights and recommendations.
+
+${langInstruction}
 
 Weekly Statistics:
 - Planned Hours: ${planned}h
@@ -78,13 +91,28 @@ Respond in JSON format:
     });
 
     const rawContent = completion.choices[0]?.message?.content;
-    const result = rawContent
-      ? (JSON.parse(rawContent) as { insights?: string[] })
-      : { insights: [] };
+    let insights: string[] = [];
+    if (rawContent) {
+      try {
+        const json = JSON.parse(rawContent) as unknown;
+        insights = InsightsResponseSchema.parse(json).insights;
+      } catch {
+        console.warn('Insights API: invalid JSON from AI, using empty insights');
+      }
+    }
+    const tokensUsed = completion.usage?.total_tokens ?? 0;
+    if (tokensUsed > 0) {
+      // eslint-disable-next-line no-console -- cost tracking per .cursorrules
+      console.info('AI insights', {
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        total_tokens: tokensUsed,
+      });
+    }
 
     return Response.json({
-      insights: result.insights ?? [],
-      tokensUsed: completion.usage?.total_tokens ?? 0,
+      insights,
+      tokensUsed,
     });
   } catch (error) {
     console.error('AI insights generation error:', error);

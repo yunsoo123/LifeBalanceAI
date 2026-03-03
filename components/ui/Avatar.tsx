@@ -9,12 +9,7 @@ interface AvatarProps extends Omit<ImageProps, 'source'> {
   size?: AvatarSize;
 }
 
-export function Avatar({
-  source,
-  fallback,
-  size = 'md',
-  ...imageProps
-}: AvatarProps) {
+export function Avatar({ source, fallback, size = 'md', ...imageProps }: AvatarProps) {
   const sizeClasses: Record<AvatarSize, { container: string; text: string }> = {
     sm: { container: 'w-8 h-8', text: 'text-sm' },
     md: { container: 'w-12 h-12', text: 'text-lg' },

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Animated } from 'react-native';
 
 export type ToastVariant = 'success' | 'error' | 'warning' | 'info';
@@ -20,12 +20,14 @@ export function Toast({
   onDismiss,
   duration = 3000,
 }: ToastProps) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-20)).current;
+  const [opacity] = useState(() => new Animated.Value(0));
+  const [translateY] = useState(() => new Animated.Value(-20));
   const [shouldRender, setShouldRender] = useState(visible);
 
   useEffect(() => {
     if (visible) {
+      // Intentional: keep mounted for enter animation then optional timer
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShouldRender(true);
       Animated.parallel([
         Animated.timing(opacity, {
@@ -61,9 +63,13 @@ export function Toast({
       setShouldRender(false);
     });
     return undefined;
-  }, [visible, duration, opacity, translateY, onDismiss]);
+    // opacity, translateY are stable (useState initializer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- opacity/translateY are stable refs
+  }, [visible, duration, onDismiss]);
 
   useEffect(() => {
+    // Intentional: sync mount so toast appears when visible becomes true
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (visible) setShouldRender(true);
   }, [visible]);
 
@@ -94,9 +100,7 @@ export function Toast({
 
           <View className="flex-1">
             <Text className="text-white font-semibold text-base mb-1">{message}</Text>
-            {description && (
-              <Text className="text-white/90 text-sm">{description}</Text>
-            )}
+            {description && <Text className="text-white/90 text-sm">{description}</Text>}
           </View>
 
           <Pressable onPress={onDismiss} className="ml-2">

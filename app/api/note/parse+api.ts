@@ -1,16 +1,21 @@
+import { z } from 'zod';
 import { parseNote } from '@/lib/ai/note-parser';
+
+const ParseBodySchema = z.object({
+  rawText: z.string().min(1, 'rawText is required'),
+});
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { rawText?: unknown };
-    const { rawText } = body;
-
-    if (!rawText || typeof rawText !== 'string') {
-      return Response.json(
-        { error: 'Missing or invalid rawText' },
-        { status: 400 }
-      );
+    const raw = await request.json().catch(() => ({}));
+    const parsed = ParseBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      const msg =
+        parsed.error.issues.map((e: { message: string }) => e.message).join('; ') ||
+        'Missing or invalid rawText';
+      return Response.json({ error: msg }, { status: 400 });
     }
+    const { rawText } = parsed.data;
 
     const parsedNote = await parseNote(rawText);
 

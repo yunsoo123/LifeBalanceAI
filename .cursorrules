@@ -33,6 +33,11 @@ Mendly is a mobile-first AI-powered life management app built with React Native 
 - Error states with retry actions
 - Empty states with clear CTAs
 
+### 5. Critical Thinking (see .cursor/rules/critical-thinking.mdc)
+- Before implementing: check preconditions, alternatives, and side effects of the user's request.
+- Vague wording ("이쁘게", "편하게") → translate to 1–2 concrete specs and get user choice before coding.
+- Conditional requests ("지금이 더 낫다면 냅둬도 됨") → state comparison criteria and recommend "keep" vs "change" with reasons.
+
 ---
 
 ## 📁 Project Structure

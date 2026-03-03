@@ -1,4 +1,11 @@
 import OpenAI from 'openai';
+import { z } from 'zod';
+
+const EnhanceResponseSchema = z.object({
+  summary: z.string().default(''),
+  actionItems: z.array(z.string()).default([]),
+  improvements: z.array(z.string()).default([]),
+});
 
 function getOpenAI(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -46,11 +53,32 @@ Respond in JSON format:
     });
 
     const rawContent = completion.choices[0]?.message?.content;
-    const suggestions = rawContent ? (JSON.parse(rawContent) as Record<string, unknown>) : {};
+    let suggestions: z.infer<typeof EnhanceResponseSchema> = {
+      summary: '',
+      actionItems: [],
+      improvements: [],
+    };
+    if (rawContent) {
+      try {
+        const json = JSON.parse(rawContent) as unknown;
+        suggestions = EnhanceResponseSchema.parse(json);
+      } catch {
+        console.warn('Enhance API: invalid JSON from AI, using empty suggestions');
+      }
+    }
+    const tokensUsed = completion.usage?.total_tokens ?? 0;
+    if (tokensUsed > 0) {
+      // eslint-disable-next-line no-console -- cost tracking per .cursorrules
+      console.info('AI enhance', {
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        total_tokens: tokensUsed,
+      });
+    }
 
     return Response.json({
       suggestions,
-      tokensUsed: completion.usage?.total_tokens ?? 0,
+      tokensUsed,
     });
   } catch (error) {
     console.error('AI enhancement error:', error);

@@ -55,9 +55,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
             {__DEV__ && this.state.error && (
               <ScrollView className="w-full max-h-32 bg-gray-100 dark:bg-gray-900 p-3 rounded-md mb-4">
-                <Text className="text-xs text-error font-mono">
-                  {this.state.error.toString()}
-                </Text>
+                <Text className="text-xs text-error font-mono">{this.state.error.toString()}</Text>
               </ScrollView>
             )}
 

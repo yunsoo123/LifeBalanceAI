@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Animated, type ViewProps, type ViewStyle } from 'react-native';
 
 type SkeletonVariant = 'text' | 'circle' | 'rect';
@@ -18,7 +18,7 @@ export function Skeleton({
   className = '',
   ...viewProps
 }: SkeletonProps) {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+  const [opacity] = useState(() => new Animated.Value(0.3));
 
   useEffect(() => {
     if (!animate) return;
@@ -57,12 +57,7 @@ export function SkeletonText({ lines = 3 }: { lines?: number }) {
   return (
     <View className="gap-2">
       {Array.from({ length: lines }).map((_, i) => (
-        <Skeleton
-          key={i}
-          variant="text"
-          width={i === lines - 1 ? '70%' : '100%'}
-          height={16}
-        />
+        <Skeleton key={i} variant="text" width={i === lines - 1 ? '70%' : '100%'} height={16} />
       ))}
     </View>
   );

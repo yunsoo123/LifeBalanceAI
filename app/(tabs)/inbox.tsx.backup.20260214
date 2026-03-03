@@ -1,0 +1,380 @@
+import React, { useState, useRef } from 'react';
+import { View, Text, TextInput, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Audio } from 'expo-av';
+import type { Audio as AudioType } from 'expo-av';
+import { Button, Card, CardBody, EmptyState, Badge, Spinner } from '@/components/ui';
+import { supabase, tables } from '@/lib/supabase/client';
+import { getApiBase, API_SETUP_HINT } from '@/lib/apiUrl';
+
+interface Entry {
+  id: string;
+  text: string;
+  timestamp: Date;
+  isParsed: boolean;
+}
+
+interface ParsedNote {
+  title: string;
+  tags: string[];
+  tasks: { text: string; done: boolean }[];
+  linkedEventNames: string[];
+}
+
+function formatTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+  return date.toLocaleDateString();
+}
+
+export default function InboxScreen() {
+  const [rawInput, setRawInput] = useState('');
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [parsingId, setParsingId] = useState<string | null>(null);
+  const [parsedNotes, setParsedNotes] = useState<Map<string, ParsedNote>>(new Map());
+  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<AudioType.Recording | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function startRecording() {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        alert('Microphone permission is required for voice input');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+      setRecording(newRecording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      const interval = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+      durationIntervalRef.current = interval;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Recording failed: ${message}`);
+    }
+  }
+
+  async function stopRecording() {
+    if (!recording) return;
+
+    try {
+      setIsRecording(false);
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+        durationIntervalRef.current = null;
+      }
+      await recording.stopAndUnloadAsync();
+
+      const uri = recording.getURI();
+      const duration = recordingDuration;
+
+      setRecording(null);
+      setRecordingDuration(0);
+
+      if (uri) {
+        alert(
+          `✅ Recording saved!\n\n` +
+            `Duration: ${duration}s\n` +
+            `URI: ${uri}\n\n` +
+            `Whisper transcription will be added in Phase 5`
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to stop recording: ${message}`);
+      setRecording(null);
+      setRecordingDuration(0);
+    }
+  }
+
+  async function parseEntry(entryId: string, text: string) {
+    setParsingId(entryId);
+
+    try {
+      const response = await fetch(`${getApiBase()}/api/note/parse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText: text }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error((data as { error?: string }).error || `HTTP ${response.status}`);
+      }
+
+      const note = (data as { data?: ParsedNote }).data;
+      if (!note) throw new Error('Invalid response');
+
+      setParsedNotes((prev) => {
+        const next = new Map(prev);
+        next.set(entryId, note);
+        return next;
+      });
+
+      setEntries((prev) => prev.map((e) => (e.id === entryId ? { ...e, isParsed: true } : e)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to parse note';
+      const isNetwork =
+        message.toLowerCase().includes('network') || message.toLowerCase().includes('fetch');
+      alert(`Failed to parse note: ${message}` + (isNetwork ? `\n\n${API_SETUP_HINT}` : ''));
+    } finally {
+      setParsingId(null);
+    }
+  }
+
+  async function parseAllEntries() {
+    const unparsed = entries.filter((e) => !e.isParsed);
+    for (const entry of unparsed) {
+      await parseEntry(entry.id, entry.text);
+    }
+  }
+
+  async function saveNote(entryId: string) {
+    const entry = entries.find((e) => e.id === entryId);
+    const parsed = parsedNotes.get(entryId);
+
+    if (!entry || !parsed) {
+      alert('Entry not found or not parsed');
+      return;
+    }
+
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        alert('Please sign in to save notes.\n\n(Auth flow will be added in Phase 5)');
+        return;
+      }
+
+      const { error } = await tables
+        .notes()
+        .insert({
+          user_id: user.id,
+          title: parsed.title,
+          content: entry.text,
+          event_id: null,
+          tags: parsed.tags,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setEntries((prev) => prev.filter((e) => e.id !== entryId));
+      setParsedNotes((prev) => {
+        const next = new Map(prev);
+        next.delete(entryId);
+        return next;
+      });
+
+      alert('✅ Note saved successfully!');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to save note: ${message}`);
+    }
+  }
+
+  function addEntry() {
+    if (rawInput.trim().length === 0) return;
+
+    const newEntry: Entry = {
+      id: Date.now().toString(),
+      text: rawInput.trim(),
+      timestamp: new Date(),
+      isParsed: false,
+    };
+
+    setEntries((prev) => [newEntry, ...prev]);
+    setRawInput('');
+  }
+
+  return (
+    <SafeAreaView className="flex-1 bg-white dark:bg-gray-950" edges={['top', 'bottom']}>
+      {/* Sticky Header */}
+      <View className="px-6 pt-4 pb-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">Brain Dump</Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={entries.length === 0 || entries.every((e) => e.isParsed)}
+            onPress={parseAllEntries}
+          >
+            Structure All
+          </Button>
+        </View>
+      </View>
+
+      <ScrollView className="flex-1">
+        <View className="p-6">
+          {/* Input Section */}
+          <View className="mb-6">
+            <TextInput
+              className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 text-base text-gray-900 dark:text-gray-100 min-h-[120px]"
+              placeholder="What's on your mind? Type freely..."
+              placeholderTextColor="#9CA3AF"
+              multiline
+              value={rawInput}
+              onChangeText={setRawInput}
+              textAlignVertical="top"
+            />
+
+            {/* Action Buttons */}
+            <View className="flex-row gap-2 mt-2">
+              <View className="flex-1">
+                <Button
+                  variant="primary"
+                  size="md"
+                  disabled={rawInput.trim().length === 0}
+                  onPress={addEntry}
+                >
+                  Add Entry
+                </Button>
+              </View>
+              <Button
+                variant={isRecording ? 'danger' : 'secondary'}
+                size="md"
+                onPress={isRecording ? stopRecording : startRecording}
+              >
+                {isRecording ? `⏹️ Stop (${recordingDuration}s)` : '🎤 Voice'}
+              </Button>
+            </View>
+          </View>
+
+          {/* Recent Entries */}
+          <View>
+            <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
+              Recent Entries ({entries.length})
+            </Text>
+            <Text className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Parse → then Save (💾) or Delete (🗑️) appears below each card
+            </Text>
+
+            {entries.length === 0 ? (
+              <EmptyState
+                icon={<Text className="text-4xl">📝</Text>}
+                title="No entries yet"
+                description="Start typing to dump your thoughts"
+              />
+            ) : (
+              <View className="gap-2">
+                {entries.map((entry) => {
+                  const parsed = parsedNotes.get(entry.id);
+                  return (
+                    <Card key={entry.id} variant="default" padding="md">
+                      <CardBody>
+                        <Text
+                          className="text-gray-900 dark:text-gray-100 mb-1"
+                          numberOfLines={parsed ? 1 : 2}
+                        >
+                          {entry.text}
+                        </Text>
+
+                        {parsed && (
+                          <View className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+                            <Text className="font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                              {parsed.title}
+                            </Text>
+                            {parsed.tags.length > 0 && (
+                              <View className="flex-row flex-wrap gap-1 mb-1">
+                                {parsed.tags.map((tag, idx) => (
+                                  <Badge key={idx} variant="default" size="sm">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </View>
+                            )}
+                            <Text className="text-xs text-gray-500 dark:text-gray-400">
+                              ✓ {parsed.tasks.length} tasks extracted
+                            </Text>
+                          </View>
+                        )}
+
+                        <View className="flex-row justify-between items-center mt-2">
+                          <Text className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatTime(entry.timestamp)}
+                          </Text>
+                          <View className="flex-row items-center gap-1">
+                            {parsingId === entry.id ? (
+                              <View className="flex-row items-center gap-1">
+                                <Spinner size="sm" />
+                                <Text className="text-xs text-gray-500 dark:text-gray-400">
+                                  Parsing...
+                                </Text>
+                              </View>
+                            ) : entry.isParsed ? (
+                              <>
+                                <Badge variant="success" size="sm">
+                                  ✓ Parsed
+                                </Badge>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onPress={() => saveNote(entry.id)}
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onPress={() => {
+                                    setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+                                    setParsedNotes((prev) => {
+                                      const next = new Map(prev);
+                                      next.delete(entry.id);
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  🗑️
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onPress={() => parseEntry(entry.id, entry.text)}
+                              >
+                                Parse
+                              </Button>
+                            )}
+                          </View>
+                        </View>
+                      </CardBody>
+                    </Card>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

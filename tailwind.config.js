@@ -1,20 +1,26 @@
 /** @type {import('tailwindcss').Config} */
+const nativewindPreset = require('nativewind/preset');
 module.exports = {
+  presets: [nativewindPreset],
+  darkMode: 'class',
   content: [
     './app/**/*.{js,jsx,ts,tsx}',
     './components/**/*.{js,jsx,ts,tsx}',
   ],
-  presets: [require('nativewind/preset')],
   theme: {
     extend: {
       colors: {
         brand: {
-          primary: '#6366F1',
-          'primary-dark': '#4F46E5',
-          'primary-light': '#818CF8',
+          primary: '#8B5CF6',
+          'primary-dark': '#7C3AED',
+          'primary-light': '#A78BFA',
           secondary: '#EC4899',
           'secondary-dark': '#DB2777',
           'secondary-light': '#F472B6',
+        },
+        surface: {
+          dark: '#1A1B27',
+          'dark-card': '#252631',
         },
         success: {
           DEFAULT: '#10B981',
@@ -58,9 +64,13 @@ module.exports = {
       },
       boxShadow: {
         sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        card: '0 2px 12px rgba(0, 0, 0, 0.03)',
         md: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         lg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
         xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+      },
+      maxWidth: {
+        'content': '672px', // max-w-2xl equivalent for centered content
       },
     },
   },

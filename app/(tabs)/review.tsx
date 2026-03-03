@@ -1,7 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Alert, Platform, Share } from 'react-native';
+import { View, Text, ScrollView, Alert, Platform, Share, Pressable, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, CardHeader, CardBody, Badge } from '@/components/ui';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Button, Spinner, ProgressBar, GoalVsActualBar, EmptyState } from '@/components/ui';
+import { useTheme } from '@/lib/ThemeContext';
+import { useI18n } from '@/lib/i18n';
+import {
+  colors,
+  getSurface,
+  fontFamily,
+  typography,
+  spacing,
+  borderRadius,
+} from '@/lib/design-system';
+import { CONTENT_MAX_WIDTH } from '@/lib/layoutConstants';
 import { supabase, tables } from '@/lib/supabase/client';
 import { getApiBase } from '@/lib/apiUrl';
 
@@ -45,12 +57,23 @@ function getAchievementColor(percentage: number): 'success' | 'warning' | 'error
 }
 
 export default function ReviewScreen() {
+  const router = useRouter();
+  const { week: weekParam } = useLocalSearchParams<{ week?: string }>();
+  const { theme } = useTheme();
+  const { t, lang } = useI18n();
   const [currentWeek, setCurrentWeek] = useState<Date>(() => new Date());
   const [stats, setStats] = useState<WeeklyStats | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [generatingInsights, setGeneratingInsights] = useState<boolean>(false);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [showActionMenu, setShowActionMenu] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (weekParam && /^\d{4}-\d{2}-\d{2}$/.test(weekParam)) {
+      setCurrentWeek(new Date(weekParam + 'T00:00:00'));
+    }
+  }, [weekParam]);
 
   const loadWeeklyStats = useCallback(async () => {
     setLoading(true);
@@ -60,17 +83,7 @@ export default function ReviewScreen() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        const { start, end } = getWeekBounds(currentWeek);
-        setStats({
-          week_start: start.toISOString(),
-          week_end: end.toISOString(),
-          planned_hours: 40,
-          actual_hours: 32,
-          completed_events: 12,
-          total_events: 15,
-          notes_created: 8,
-          achievement_rate: 80,
-        });
+        setStats(null);
         return;
       }
 
@@ -89,7 +102,7 @@ export default function ReviewScreen() {
 
       const { data: events } = await tables
         .events()
-        .select('start_time, end_time')
+        .select('id, title, start_time, end_time, completed_at')
         .eq('user_id', user.id)
         .gte('start_time', start.toISOString())
         .lte('start_time', end.toISOString());
@@ -97,7 +110,7 @@ export default function ReviewScreen() {
       const totalEvents = events?.length ?? 0;
       const eventRows = events ?? [];
       const completedEvents =
-        eventRows.filter((e) => (e as { completed?: boolean }).completed).length ?? 0;
+        eventRows.filter((e) => e.completed_at != null).length ?? 0;
 
       const actualHours =
         eventRows.reduce((sum, event) => {
@@ -153,6 +166,15 @@ export default function ReviewScreen() {
   function goToCurrentWeek() {
     setCurrentWeek(new Date());
   }
+
+  const reviewCardStyle = {
+    backgroundColor: getSurface('card', theme),
+    borderWidth: 1,
+    borderColor: theme === 'dark' ? colors.border.subtle : colors.border.subtleLight,
+    borderRadius: 20,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  };
 
   async function generateAIInsights() {
     if (!stats) {
@@ -332,242 +354,475 @@ export default function ReviewScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-gray-950" edges={['top', 'bottom']}>
-      <View className="px-6 pt-4 pb-2 border-b border-gray-200 dark:border-gray-800">
-        <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">Weekly Review</Text>
-          <View className="flex-row gap-2 flex-wrap justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={copyToClipboard}
-              disabled={loading || generatingInsights || exporting || !stats}
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: getSurface('screen', theme) }}
+      edges={['top', 'bottom']}
+    >
+      <View
+        style={{
+          paddingHorizontal: spacing.lg,
+          paddingTop: spacing.md,
+          paddingBottom: spacing.sm,
+          borderBottomWidth: 1,
+          borderBottomColor: theme === 'dark' ? colors.border.subtle : colors.border.subtleLight,
+          backgroundColor: getSurface('card', theme),
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text
+            style={{
+              fontSize: typography.fontSize.titleLarge,
+              fontFamily: fontFamily.bold,
+              color: theme === 'dark' ? colors.text.primary : colors.text.primaryLight,
+            }}
+          >
+            {t.review.title}
+          </Text>
+          <Pressable
+            onPress={() => setShowActionMenu(true)}
+            style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }}
+            accessibilityLabel={lang === 'ko' ? '메뉴' : 'Menu'}
+            accessibilityRole="button"
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                color: theme === 'dark' ? colors.text.primary : colors.text.primaryLight,
+              }}
             >
-              📋 Copy
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={shareReview}
-              disabled={loading || generatingInsights || exporting || !stats}
-            >
-              🔗 Share
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={exportAsText}
-              disabled={loading || generatingInsights || exporting || !stats}
-            >
-              💾 Export
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onPress={generateAIInsights}
-              disabled={loading || generatingInsights || exporting || !stats}
-            >
-              {generatingInsights ? '🤖 Generating...' : '✨ Generate'}
-            </Button>
-          </View>
+              ⋮
+            </Text>
+          </Pressable>
         </View>
 
-        <View className="flex-row justify-between items-center">
-          <Button variant="ghost" size="sm" onPress={goToPreviousWeek}>
-            ← Prev
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: spacing.md,
+          }}
+        >
+          <Button variant="ghost" size="sm" onPress={goToPreviousWeek} accessibilityLabel={t.review.prev}>
+            {t.review.prev}
           </Button>
-          <Button variant="ghost" size="sm" onPress={goToCurrentWeek}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={goToCurrentWeek}
+            accessibilityLabel={t.review.thisWeek}
+          >
             {stats
               ? formatDateRange(new Date(stats.week_start), new Date(stats.week_end))
-              : 'This Week'}
+              : t.review.thisWeek}
           </Button>
-          <Button variant="ghost" size="sm" onPress={goToNextWeek}>
-            Next →
+          <Button variant="ghost" size="sm" onPress={goToNextWeek} accessibilityLabel={t.review.next}>
+            {t.review.next}
           </Button>
         </View>
       </View>
 
-      <ScrollView className="flex-1">
-        <View className="p-6">
-          {loading ? (
-            <View className="items-center py-6">
-              <Text className="text-gray-500 dark:text-gray-400">Loading statistics...</Text>
-            </View>
-          ) : !stats ? (
-            <Text className="text-center text-gray-500 dark:text-gray-400">No data available</Text>
-          ) : (
-            <>
-              <Card variant="default" padding="md" className="mb-6">
-                <CardHeader>
-                  <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    Achievement Overview
+      <Modal
+        visible={showActionMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionMenu(false)}
+      >
+        <Pressable
+          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onPress={() => setShowActionMenu(false)}
+        >
+          <Pressable
+            style={{
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              padding: spacing.lg,
+              paddingBottom: spacing.xl,
+              backgroundColor: getSurface('card', theme),
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="md"
+              onPress={() => {
+                setShowActionMenu(false);
+                shareReview();
+              }}
+              disabled={loading || exporting || !stats}
+            >
+              {t.review.share}
+            </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              onPress={() => {
+                setShowActionMenu(false);
+                copyToClipboard();
+              }}
+              disabled={loading || exporting || !stats}
+            >
+              {t.review.copy}
+            </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              onPress={() => {
+                setShowActionMenu(false);
+                exportAsText();
+              }}
+              disabled={loading || exporting || !stats}
+            >
+              {t.review.export}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onPress={() => {
+                setShowActionMenu(false);
+                generateAIInsights();
+              }}
+              disabled={loading || generatingInsights || exporting || !stats}
+            >
+              {generatingInsights ? t.common.loading : t.review.generate}
+            </Button>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', width: '100%', paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}>
+        {loading ? (
+          <View style={{ paddingVertical: spacing.xl, alignItems: 'center' }}>
+            <Spinner />
+            <Text
+              style={{
+                marginTop: spacing.md,
+                fontSize: typography.fontSize.small,
+                fontFamily: fontFamily.regular,
+                color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+              }}
+            >
+              {t.common.loading}
+            </Text>
+          </View>
+        ) : !stats ? (
+          <View style={{ paddingVertical: spacing.xl }}>
+            <EmptyState
+              icon={<Text style={{ fontSize: 36 }}>📊</Text>}
+              dark={theme === 'dark'}
+              title={t.review.signInToSeeTitle}
+              description={t.review.signInToSeeDesc}
+              action={{
+                label: lang === 'ko' ? '로그인' : 'Sign in',
+                onPress: () => router.replace('/sign-in'),
+              }}
+            />
+          </View>
+        ) : (
+          <>
+            <View style={[reviewCardStyle, { marginTop: spacing.lg }]}>
+              <Text
+                style={{
+                  fontSize: typography.fontSize.subhead,
+                  fontFamily: fontFamily.medium,
+                  color: theme === 'dark' ? colors.text.primary : colors.text.primaryLight,
+                  marginBottom: spacing.md,
+                }}
+              >
+                {t.review.summaryTitle}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: spacing.lg, marginBottom: spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      marginBottom: 2,
+                      fontFamily: fontFamily.regular,
+                      color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                    }}
+                  >
+                    {t.review.totalFocusTimeLabel}
                   </Text>
-                </CardHeader>
-                <CardBody>
-                  <View className="items-center py-4">
-                    <Text className="text-5xl font-bold text-gray-900 dark:text-gray-100">
-                      {stats.achievement_rate}%
-                    </Text>
-                    <Text className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      Weekly Achievement Rate
-                    </Text>
-                    <Badge
-                      variant={getAchievementColor(stats.achievement_rate)}
-                      size="md"
-                      className="mt-2"
-                    >
-                      {stats.achievement_rate >= 80
-                        ? '🎉 Excellent!'
-                        : stats.achievement_rate >= 60
-                          ? '👍 Good'
-                          : '💪 Keep Going'}
-                    </Badge>
-                  </View>
-                </CardBody>
-              </Card>
-
-              <View className="mb-6">
-                <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                  Key Metrics
-                </Text>
-
-                <Card variant="default" padding="md" className="mb-2">
-                  <CardBody>
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Hours Completed
-                      </Text>
-                      <Badge
-                        variant={getAchievementColor(
-                          calculatePercentage(stats.actual_hours, stats.planned_hours || 1)
-                        )}
+                  <Text
+                    style={{
+                      fontSize: 24,
+                      fontFamily: fontFamily.bold,
+                      color: theme === 'dark' ? colors.text.primary : colors.text.primaryLight,
+                    }}
+                  >
+                    {stats.actual_hours}h
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontFamily: fontFamily.regular,
+                      color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                    }}
+                  >
+                    / {stats.planned_hours}h {lang === 'ko' ? '계획' : 'planned'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          marginBottom: 2,
+                          fontFamily: fontFamily.regular,
+                          color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                        }}
                       >
-                        {calculatePercentage(stats.actual_hours, stats.planned_hours || 1)}%
-                      </Badge>
-                    </View>
-                    <View className="flex-row items-baseline gap-2">
-                      <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                        {stats.actual_hours}h
+                        {t.review.planAchievementRateLabel}
                       </Text>
-                      <Text className="text-sm text-gray-500 dark:text-gray-400">
-                        / {stats.planned_hours}h planned
-                      </Text>
-                    </View>
-                  </CardBody>
-                </Card>
-
-                <Card variant="default" padding="md" className="mb-2">
-                  <CardBody>
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Events Completed
-                      </Text>
-                      <Badge
-                        variant={getAchievementColor(
-                          calculatePercentage(stats.completed_events, stats.total_events || 1)
-                        )}
+                      <Pressable
+                        onPress={() =>
+                          Alert.alert(
+                            t.review.planAchievementRateLabel,
+                            t.review.planAchievementRateTooltip
+                          )
+                        }
+                        style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }}
+                        accessibilityLabel={t.review.planAchievementRateTooltip}
+                        accessibilityRole="button"
                       >
-                        {calculatePercentage(stats.completed_events, stats.total_events || 1)}%
-                      </Badge>
-                    </View>
-                    <View className="flex-row items-baseline gap-2">
-                      <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                        {stats.completed_events}
-                      </Text>
-                      <Text className="text-sm text-gray-500 dark:text-gray-400">
-                        / {stats.total_events} events
-                      </Text>
-                    </View>
-                  </CardBody>
-                </Card>
-
-                <Card variant="default" padding="md">
-                  <CardBody>
-                    <Text className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Notes Created
-                    </Text>
-                    <View className="flex-row items-baseline gap-2">
-                      <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                        {stats.notes_created}
-                      </Text>
-                      <Text className="text-sm text-gray-500 dark:text-gray-400">new notes</Text>
-                    </View>
-                  </CardBody>
-                </Card>
-              </View>
-
-              <Card variant="default" padding="md">
-                <CardHeader>
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                      AI Insights
-                    </Text>
-                    {aiInsights.length > 0 && (
-                      <Badge variant="success" size="sm">
-                        {aiInsights.length} insights
-                      </Badge>
-                    )}
-                  </View>
-                </CardHeader>
-                <CardBody>
-                  {generatingInsights ? (
-                    <View className="py-4">
-                      <Text className="text-sm text-gray-500 dark:text-gray-400 text-center mb-2">
-                        🤖 Analyzing your week...
-                      </Text>
-                      <Text className="text-xs text-gray-400 dark:text-gray-500 text-center">
-                        This may take a few seconds
-                      </Text>
-                    </View>
-                  ) : aiInsights.length === 0 ? (
-                    <Text className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                      Generate AI insights to get personalized recommendations based on your weekly
-                      performance
-                    </Text>
-                  ) : (
-                    <View className="gap-2">
-                      {aiInsights.map((insight, idx) => (
-                        <View
-                          key={idx}
-                          className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4"
+                        <Text
+                          style={{
+                            fontSize: 14,
+                            color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                          }}
                         >
-                          <View className="flex-row items-start gap-2">
-                            <Text className="text-lg">
-                              {idx === 0
-                                ? '🎯'
-                                : idx === 1
-                                  ? '💡'
-                                  : idx === 2
-                                    ? '🌟'
-                                    : idx === 3
-                                      ? '📈'
-                                      : idx === 4
-                                        ? '🚀'
-                                        : '✨'}
-                            </Text>
-                            <Text className="flex-1 text-sm text-gray-900 dark:text-gray-100">
-                              {insight}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
+                          (i)
+                        </Text>
+                      </Pressable>
                     </View>
-                  )}
-                </CardBody>
-              </Card>
-
-              {exporting && (
-                <Card variant="default" padding="md" className="mt-4">
-                  <CardBody>
-                    <Text className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                      📤 Preparing export...
+                    <Text
+                      style={{
+                        fontSize: 24,
+                        fontFamily: fontFamily.bold,
+                        color:
+                          getAchievementColor(stats.achievement_rate) === 'success'
+                            ? colors.semantic.success
+                            : getAchievementColor(stats.achievement_rate) === 'warning'
+                              ? colors.semantic.warning
+                              : colors.semantic.error,
+                      }}
+                    >
+                      {stats.planned_hours > 0 ? `${stats.achievement_rate}%` : '—'}
                     </Text>
-                  </CardBody>
-                </Card>
+                  </View>
+                </View>
+              </View>
+              {stats.planned_hours > 0 && (
+                <ProgressBar
+                  value={stats.achievement_rate}
+                  variant={
+                    getAchievementColor(stats.achievement_rate) === 'success'
+                      ? 'success'
+                      : getAchievementColor(stats.achievement_rate) === 'warning'
+                        ? 'warning'
+                        : 'error'
+                  }
+                  height={14}
+                  showLabel
+                  label={`${stats.achievement_rate}%`}
+                />
               )}
-            </>
-          )}
-        </View>
+            </View>
+
+            <View style={reviewCardStyle}>
+              <Text
+                style={{
+                  fontSize: typography.fontSize.subhead,
+                  fontFamily: fontFamily.medium,
+                  color: theme === 'dark' ? colors.text.primary : colors.text.primaryLight,
+                  marginBottom: spacing.md,
+                }}
+              >
+                {t.review.achievementOverview}
+              </Text>
+              <GoalVsActualBar
+                activityName={lang === 'ko' ? '총 시간' : 'Total'}
+                actualHours={stats.actual_hours}
+                goalHours={stats.planned_hours}
+              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 }}>
+                <Text
+                  style={{
+                    fontSize: typography.fontSize.small,
+                    fontFamily: fontFamily.regular,
+                    color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                  }}
+                >
+                  {t.review.eventsCompleted}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text
+                    style={{
+                      fontSize: typography.fontSize.small,
+                      fontFamily: fontFamily.medium,
+                      color: theme === 'dark' ? colors.text.secondary : colors.text.secondaryLight,
+                    }}
+                  >
+                    {stats.completed_events} / {stats.total_events}
+                  </Text>
+                  {stats.total_events > 0 && (
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: fontFamily.regular,
+                        color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                      }}
+                    >
+                      ({t.review.eventCompletionRateLabel}{' '}
+                      {Math.round((stats.completed_events / stats.total_events) * 100)}%)
+                    </Text>
+                  )}
+                </View>
+              </View>
+              {stats.total_events > 0 && (
+                <View style={{ marginTop: 8 }}>
+                  <ProgressBar
+                    value={(stats.completed_events / stats.total_events) * 100}
+                    variant={
+                      (stats.completed_events / stats.total_events) * 100 >= 80
+                        ? 'success'
+                        : (stats.completed_events / stats.total_events) * 100 >= 60
+                          ? 'warning'
+                          : 'error'
+                    }
+                    height={12}
+                    showLabel
+                    label={`${t.review.eventsCompleted} ${Math.round((stats.completed_events / stats.total_events) * 100)}%`}
+                  />
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, marginTop: spacing.sm }}>
+                <Text
+                  style={{
+                    fontSize: typography.fontSize.small,
+                    fontFamily: fontFamily.regular,
+                    color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                  }}
+                >
+                  {t.review.notesCreatedLabel}
+                </Text>
+                <Pressable
+                  onPress={() => router.push('/(tabs)/notes')}
+                  style={{ minHeight: 44, justifyContent: 'center' }}
+                  accessibilityLabel={lang === 'ko' ? '노트로 이동' : 'Go to Notes'}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={{
+                      fontSize: typography.fontSize.small,
+                      fontFamily: fontFamily.medium,
+                      color: theme === 'dark' ? colors.text.secondary : colors.text.secondaryLight,
+                    }}
+                  >
+                    {stats.notes_created} {t.review.newNotes}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={reviewCardStyle}>
+              <Text
+                style={{
+                  fontSize: typography.fontSize.subhead,
+                  fontFamily: fontFamily.medium,
+                  color: theme === 'dark' ? colors.text.primary : colors.text.primaryLight,
+                  marginBottom: spacing.md,
+                }}
+              >
+                {t.review.aiInsights}
+              </Text>
+              {generatingInsights ? (
+                <View style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: typography.fontSize.small,
+                      fontFamily: fontFamily.regular,
+                      color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {t.review.analyzingYourWeek}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: fontFamily.regular,
+                      color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                    }}
+                  >
+                    {t.review.mayTakeFewSeconds}
+                  </Text>
+                </View>
+              ) : aiInsights.length === 0 ? (
+                <Text
+                  style={{
+                    fontSize: typography.fontSize.small,
+                    fontFamily: fontFamily.regular,
+                    color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                    textAlign: 'center',
+                    paddingVertical: spacing.lg,
+                  }}
+                >
+                  {t.review.generateInsightsDesc}
+                </Text>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {aiInsights.map((insight, idx) => (
+                    <View
+                      key={idx}
+                      style={{
+                        padding: spacing.md,
+                        borderRadius: borderRadius.lg,
+                        borderWidth: 1,
+                        borderColor: theme === 'dark' ? colors.border.subtle : colors.border.subtleLight,
+                        backgroundColor: theme === 'dark' ? colors.surface.cardElevated : colors.surface.cardElevatedLight,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: typography.fontSize.small,
+                          fontFamily: fontFamily.regular,
+                          color: theme === 'dark' ? colors.text.primary : colors.text.primaryLight,
+                        }}
+                      >
+                        {insight}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <Button
+                variant="secondary"
+                size="md"
+                onPress={generateAIInsights}
+                disabled={loading || generatingInsights || exporting || !stats}
+                style={{ marginTop: spacing.md }}
+              >
+                {generatingInsights ? t.common.loading : t.review.generate}
+              </Button>
+            </View>
+
+            {exporting && (
+              <View style={[reviewCardStyle, { alignItems: 'center' }]}>
+                <Text
+                  style={{
+                    fontSize: typography.fontSize.small,
+                    fontFamily: fontFamily.regular,
+                    color: theme === 'dark' ? colors.text.tertiary : colors.text.secondaryLight,
+                  }}
+                >
+                  {t.review.preparingExport}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

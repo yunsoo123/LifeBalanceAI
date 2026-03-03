@@ -3,11 +3,12 @@
  * Run: npx tsx test-schedule.ts
  * Requires: OPENAI_API_KEY in .env.local (real key, not placeholder).
  */
+/* eslint-disable no-console */
 import { config } from 'dotenv';
 
-config({ path: '.env.local' });
-
 import { generateSchedule } from './lib/ai/schedule-generator';
+
+config({ path: '.env.local' });
 
 generateSchedule('I want to do app dev, school, and poker')
   .then((schedule) => {
